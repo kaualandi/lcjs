@@ -9,19 +9,62 @@
 
 const lcjs = require('@arction/lcjs')
 
-const { lightningChart, Themes, emptyLine, AutoCursorModes, AxisTickStrategies, ColorHEX, SolidFill, PointShape } = lcjs
+const { lightningChart, emptyLine, AutoCursorModes, AxisTickStrategies, ColorHEX, SolidFill, PointShape } = lcjs
 
-const channelCount = 6
-const dataRateHz = 1000
-const xViewMs = 15 * 1000
+let contentRest = 0;
+let startCurves = false;
+let startContent = [];
+
+
+const channelCount = 5
+const dataRateHz = 254
+// const dataRateHz = 254
+const xViewMs = 10 * 1000
+
+function wsConnect(dataArray) {
+    const socket = new WebSocket('ws://54.207.148.13:8002/');
+    socket.onopen = function (event) {
+        console.log('Conectado');
+    };
+
+    socket.onmessage = function (event) {
+        const json = JSON.parse(event.data.toString());
+        if (json.equipment !== 3) return;
+        if (startCurves) console.log('Conteúdo restante', dataArray.length, contentRest);
+        if (!startContent.length) console.clear();
+
+        const content = json.waves.plenth; // as number[]
+        // console.log('Conteúdo recebido', content.length);
+
+        if (!startCurves) {
+            startContent.push(...content);
+            console.log('Acumulando...');
+            if (startContent.length >= 2000) {
+                startCurves = true;
+                console.log('Iniciando curvas');
+                dataArray.push(...startContent);
+            }
+            return;
+        }
+        dataArray.push(...content);
+    }
+}
 
 fetch(document.head.baseURI + 'examples/assets/0033/ecg.json')
     .then((r) => r.json())
     .then((ecgData) => {
-        const CHANNELS = new Array(channelCount).fill(0).map((_, i) => ({ name: `ECG-${i + 1}`, yMin: -2500, yMax: 2500 }))
-
+        console.log(ecgData);
+        const CHANNELS = new Array(channelCount).fill(0).map((_, i) => ({ name: `ECG-${i + 1}`, yMin: 0, yMax: 250 }))
+        wsConnect(ecgData);
         // NOTE: Using `Dashboard` is no longer recommended for new applications. Find latest recommendations here: https://lightningchart.com/js-charts/docs/basic-topics/grouping-charts/
-        const dashboard = lightningChart()
+        const dashboard = lightningChart({
+            // Valid until 12/31/2023
+            license: "0002-n7PjjV4UiPOo2WHXhl9PY1lvTawGKwCy47RKA4TsvM5tyF7nl2aw+2XZbIHsLEAZpiUjY6TYIcT3ZqENMhE4c9Wo-MEUCIGLwiuc9OPKJn9pdC1Dqx0YhMMnlZ37D8d9csx47WTAOAiEA81C2R7qsUlpjhuY0CjB2r+DTykiifOGQ8FdEUYbrDHw=",
+            licenseInformation: {
+                appTitle: "LightningChart JS Trial",
+                company: "LightningChart Ltd."
+            },
+        })
             .Dashboard({
                 numberOfColumns: 1,
                 numberOfRows: CHANNELS.length,
@@ -94,8 +137,8 @@ fetch(document.head.baseURI + 'examples/assets/0033/ecg.json')
                 .setEffect(false)
 
             // Synchronize highlighting of "left" and "right" series.
-            let isHighlightChanging = false
-            ;[seriesLeft, seriesRight].forEach((series) => {
+            let isHighlightChanging = false;
+            [seriesLeft, seriesRight].forEach((series) => {
                 series.onHighlight((value) => {
                     if (isHighlightChanging) {
                         return
@@ -224,7 +267,9 @@ fetch(document.head.baseURI + 'examples/assets/0033/ecg.json')
                 for (let iDp = 0; iDp < newDataPointsCount; iDp++) {
                     const x = (pushedDataCount + iDp) * xStep
                     const iData = (pushedDataCount + iDp) % ecgData.length
-                    const y = ecgData[iData]
+                    contentRest = iData;
+                    const y = ecgData[iData];
+                    // console.log(y);
                     const point = { x, y }
                     newDataPoints.push(point)
                 }
